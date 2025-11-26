@@ -1,0 +1,207 @@
+# Project TODO Checklist (LLM Side-Channels)
+
+## 0. Clean up what you already have
+
+- [ ] Repo hygiene
+  - [done ] Ensure repo structure is:
+    - [ ] `victim_service/` with `server.py`, `model_backend.py`, `covert_channel.py`, `requirements.txt`, `Dockerfile`
+    - [ ] `attacker/` with `flush_reload.c`, `Makefile`, `Dockerfile`
+    - [ ] `experiments/` with `traffic_gen.py`, `covert_receiver.py`
+    - [ ] `infra/docker-compose.yml`
+  - [ ] Add top-level `LICEN
+  SE`
+  - [ ] Add `.gitignore` (at least: `__pycache__/`, `.venv/`, `logs/`, `.DS_Store`)
+
+- [done ] Local tests (Mac)
+  - [ ] `victim_service` runs locally with `uvicorn`
+  - [ ] `traffic_gen.py` sends requests and `logs/requests.csv` is created
+  - [ ] `covert_receiver.py` runs and writes `covert_trace.csv`
+  - [ ] Docker Desktop builds `llm-victim` image successfully
+
+---
+
+## 1. Before x86: finish all pure-Python / orchestration work
+
+### 1.1 Experiment harness (fingerprinting driver)
+
+- [ ] Create `experiments/run_fingerprint_experiment.py` that:
+  - [ ] Loops over model names `["fake_a", "fake_b"]`
+  - [ ] For each model:
+    - [ ] Starts victim container (for example with `docker run ... -e MODEL_NAME=<name>`)
+    - [ ] Runs `traffic_gen.py` with `--model-tag` set to that model
+    - [ ] Stops victim container
+  - [ ] Writes metadata file (for example `experiments/metadata_fingerprint.json`) that records:
+    - [ ] Model name
+    - [ ] Timestamp
+    - [ ] Experiment tag
+
+### 1.2 Latency analysis script
+
+- [ ] Create `experiments/analyze_latency.py` that:
+  - [ ] Reads `logs/requests.csv`
+  - [ ] Groups results by `model_name` and/or `tag`
+  - [ ] Computes mean, p50, p90, p99 of `elapsed_ms`
+  - [ ] Computes fraction of requests with `covert_triggered = 1`
+  - [ ] Uses matplotlib to save simple plots (for example latency histogram per model)
+
+---
+
+## 2. When x86 VM is available: system setup
+
+- [ ] Base setup on x86 Ubuntu VM
+  - [ ] `sudo apt update && sudo apt upgrade -y`
+  - [ ] Install: `git`, `build-essential`, `python3`, `python3-pip`, `python3-venv`
+  - [ ] Install Docker: `sudo apt install -y docker.io`
+  - [ ] Add user to docker group: `sudo usermod -aG docker $USER`
+  - [ ] Log out and back in; verify `docker run hello-world` works
+
+- [ ] Perf and eBPF tools
+  - [ ] Install: `linux-tools-$(uname -r)` and `linux-headers-$(uname -r)`
+  - [ ] Install bpf tools (for example `bpftrace` or `bcc` depending on distro)
+  - [ ] Verify `perf stat -e cache-misses -a sleep 1` works without errors
+
+- [ ] CPU feature checks
+  - [ ] `grep -E "clflush|rdtscp" /proc/cpuinfo` shows both instructions
+  - [ ] `lscpu` used to record CPU model name and cache sizes in notes
+
+---
+
+## 3. Build and run existing code on x86
+
+- [ ] Clone repo to VM
+- [ ] Victim service on x86
+  - [ ] `docker build -t llm-victim ./victim_service`
+  - [ ] `docker run --rm -p 8000:8000 -e MODEL_NAME=fake_a -e COVERT_ENABLED=1 llm-victim`
+  - [ ] Confirm `curl http://localhost:8000/generate` works
+
+- [ ] Attacker on x86
+  - [ ] `cd attacker && make` builds `flush_reload` binary
+  - [ ] `./flush_reload 100000 > dry_run.csv` runs and produces CSV
+  - [ ] `docker build -t llm-attacker-flushreload ./attacker`
+  - [ ] `docker run --rm llm-attacker-flushreload` runs and prints CSV
+
+---
+
+## 4. Turn attacker into real FLUSH+RELOAD (fingerprinting core)
+
+- [ ] Identify shared library to monitor
+  - [ ] Run victim container and find its PID (using `docker top` or similar)************************* 
+  - [ ] Inspect `/proc/<pid>/maps` and choose a shared `.so` (for example `libm`, `libpython`, `libopenblas`)
+  - [ ] Record path to that `.so` file
+
+- [ ] Find symbol offset inside library
+  - [ ] Use `nm -D <libfile> | grep <symbol>` or `objdump -d <libfile>`
+  - [ ] Compute offset of chosen symbol from library base
+
+- [ ] Map same library in attacker
+  - [ ] Modify `flush_reload.c` to:
+    - [ ] `open` and `mmap` the library read-only
+    - [ ] Set `target` pointer to base address plus symbol offset
+  - [ ] Verify that dereferencing `*target` does not crash
+
+- [ ] Calibrate hit vs miss threshold
+  - [ ] Collect timing samples when victim is idle (no special calls) -> baseline "miss" distribution
+  - [ ] Collect timing samples while victim repeatedly calls monitored function -> mixture of hit and miss
+  - [ ] Choose threshold (for example around 200 cycles) that separates hits and misses
+
+- [ ] Implement hit/miss output
+  - [ ] Modify attacker to output CSV lines like `iter,cycles,hit`
+  - [ ] Confirm histogram of `cycles` shows two clusters for hit vs miss
+
+---
+
+#
+
+
+## 6. Covert channel experiment (Research Question 2)
+
+### 6.1 Covert sender tuning (victim side)
+
+- [ ] Tune parameters in `covert_channel.py`:
+  - [ ] Slot duration (for example `slot_ms`)
+  - [ ] Number of bits (for example 6 bits for topic ID)
+- [ ] Verify that:
+  - [ ] Total transmission time is acceptable (under about 200 ms)
+  - [ ] Busy slots measurably increase contention (check with perf or simple timing script)
+
+### 6.2 Covert receiver (attacker side)
+
+- [ ] Implement proper receiver in C on x86:
+  - [ ] Either:
+    - [ ] Use FLUSH+RELOAD on a chosen target address and aggregate by time slots, or
+    - [ ] Use high resolution timing of a memory operation in a tight loop
+  - [ ] Decode time into slots and compute:
+    - [ ] Average latency or hit rate per slot
+    - [ ] Bit value (0 or 1) per slot using a threshold
+
+### 6.3 End-to-end covert channel evaluation
+
+- [ ] Run victim with `COVERT_ENABLED=1`
+- [ ] Use `traffic_gen.py` to send a mix of sensitive and non-sensitive prompts
+- [ ] For each sensitive prompt:
+  - [ ] Record the true topic ID on the victim side (from prompt classification)
+  - [ ] Record bits and decoded topic ID on the receiver side
+- [ ] Compute:
+  - [ ] Bit error rate (BER)
+  - [ ] Topic classification accuracy (correct topic vs incorrect)
+  - [ ] Effective bitrate (bits per second)
+
+---
+
+## 7. Mitigations
+
+### 7.1 Intel CAT (cache partitioning), if available
+
+- [ ] Enable CAT / resctrl on VM
+  - [ ] Mount resctrl filesystem
+  - [ ] Create classes of service for victim and attacker
+  - [ ] Assign different LLC way masks to each class
+
+- [ ] Rerun experiments:
+  - [ ] Fingerprinting with CAT enabled
+  - [ ] Covert channel with CAT enabled
+
+- [ ] Measure:
+  - [ ] Change in fingerprinting accuracy
+  - [ ] Change in covert channel bitrate and error rate
+  - [ ] Extra latency overhead on victim (p50 and p99)
+
+### 7.2 eBPF-based syscall limiting / anomaly detection
+
+- [ ] Write a small eBPF program or bpftrace script that:
+  - [ ] Counts syscalls per process or container
+  - [ ] Logs or rate-limits extreme syscall rates
+
+- [ ] Attach eBPF program to victim and attacker
+- [ ] Measure:
+  - [ ] Overhead added to normal workload
+  - [ ] Ability to flag or slow down attacker behavior (for example flush+reload loops)
+
+### 7.3 Perf-based anomaly detector (if time)
+
+- [ ] Use `perf stat` or `perf record` to collect:
+  - [ ] Cache misses
+  - [ ] Instructions
+  - [ ] Branches
+  - [ ] Other relevant hardware counters
+  for victim and attacker.
+
+- [ ] Extract features per time window or per request
+- [ ] Implement simple anomaly detector:
+  - [ ] Threshold rules or logistic regression
+- [ ] Evaluate:
+  - [ ] False positives on benign workloads
+  - [ ] Detection rate on attack workloads
+
+---
+
+## 8. Experiment framework and configuration
+
+- [ ] Define a simple config format (YAML or JSON), for example:
+
+  ```yaml
+  experiment: "fingerprint"
+  model: "fake_a"
+  isolation: "docker"
+  mitigation: "none"
+  attacker: "flush_reload"
