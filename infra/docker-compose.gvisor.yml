@@ -1,0 +1,31 @@
+# gVisor Override for Docker Compose
+# 
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gvisor.yml up victim-fake-a
+#
+# Requires gVisor (runsc) to be installed:
+#   See: https://gvisor.dev/docs/user_guide/install/
+
+version: "3.8"
+
+services:
+  victim-fake-a:
+    runtime: runsc
+
+  victim-fake-b:
+    runtime: runsc
+
+  victim-fake-c:
+    runtime: runsc
+
+  victim-distilgpt2:
+    runtime: runsc
+
+  victim-gpt2:
+    runtime: runsc
+
+  victim-opt-125m:
+    runtime: runsc
+
+  victim-gpt2-medium:
+    runtime: runsc

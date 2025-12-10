@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Build
+*.o
+flush_reload
+flush_reload_debug
+flush_reload_profile
+gmon.out
+
+# Data
+*.csv
+*.log
+logs/
+results/
+experiment_results/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Docker
+.docker/
+
+# Models
+.cache/
+*.png

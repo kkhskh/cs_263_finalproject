@@ -1,0 +1,194 @@
+# Docker Compose for LLM Side-Channel Research
+# 
+# Usage:
+#   docker compose up victim-fake-a -d
+#   docker compose up victim-distilgpt2-obfuscated -d
+#   docker compose run attacker-calibrate
+#
+# For gVisor (requires gVisor installed):
+#   docker compose -f docker-compose.yml -f docker-compose.gvisor.yml up victim-fake-a-gvisor
+
+version: "3.8"
+
+services:
+  # ===========================================================================
+  # Victim Services - No Obfuscation (Baseline)
+  # ===========================================================================
+  
+  victim-fake-a:
+    build: ../victim_service
+    ports: ["8000:8000"]
+    environment:
+      MODEL_NAME: fake_a
+      USE_REAL_MODELS: "0"
+      COVERT_ENABLED: "1"
+      OBFUSCATION_STRATEGY: none
+    volumes: [victim-logs:/app/logs]
+
+  victim-fake-b:
+    build: ../victim_service
+    ports: ["8001:8000"]
+    environment:
+      MODEL_NAME: fake_b
+      USE_REAL_MODELS: "0"
+      COVERT_ENABLED: "1"
+      OBFUSCATION_STRATEGY: none
+    volumes: [victim-logs:/app/logs]
+
+  victim-fake-c:
+    build: ../victim_service
+    ports: ["8002:8000"]
+    environment:
+      MODEL_NAME: fake_c
+      USE_REAL_MODELS: "0"
+      OBFUSCATION_STRATEGY: none
+    volumes: [victim-logs:/app/logs]
+
+  victim-distilgpt2:
+    build: ../victim_service
+    ports: ["8010:8000"]
+    environment:
+      MODEL_NAME: distilgpt2
+      USE_REAL_MODELS: "1"
+      COVERT_ENABLED: "1"
+      OBFUSCATION_STRATEGY: none
+    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
+    deploy: {resources: {limits: {memory: 4G}}}
+
+  victim-gpt2:
+    build: ../victim_service
+    ports: ["8011:8000"]
+    environment:
+      MODEL_NAME: gpt2
+      USE_REAL_MODELS: "1"
+      OBFUSCATION_STRATEGY: none
+    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
+    deploy: {resources: {limits: {memory: 4G}}}
+
+  victim-opt-125m:
+    build: ../victim_service
+    ports: ["8012:8000"]
+    environment:
+      MODEL_NAME: opt-125m
+      USE_REAL_MODELS: "1"
+      OBFUSCATION_STRATEGY: none
+    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
+    deploy: {resources: {limits: {memory: 4G}}}
+
+  victim-gpt2-medium:
+    build: ../victim_service
+    ports: ["8013:8000"]
+    environment:
+      MODEL_NAME: gpt2-medium
+      USE_REAL_MODELS: "1"
+      OBFUSCATION_STRATEGY: none
+    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
+    deploy: {resources: {limits: {memory: 6G}}}
+
+  # ===========================================================================
+  # Victim Services - With Timing Obfuscation (Mitigations)
+  # ===========================================================================
+  
+  victim-fake-a-random50:
+    build: ../victim_service
+    ports: ["8100:8000"]
+    environment:
+      MODEL_NAME: fake_a
+      USE_REAL_MODELS: "0"
+      OBFUSCATION_STRATEGY: random
+      OBFUSCATION_PARAM: "50"
+    volumes: [victim-logs:/app/logs]
+
+  victim-fake-a-bucket100:
+    build: ../victim_service
+    ports: ["8101:8000"]
+    environment:
+      MODEL_NAME: fake_a
+      USE_REAL_MODELS: "0"
+      OBFUSCATION_STRATEGY: bucket
+      OBFUSCATION_PARAM: "100"
+    volumes: [victim-logs:/app/logs]
+
+  victim-distilgpt2-random100:
+    build: ../victim_service
+    ports: ["8110:8000"]
+    environment:
+      MODEL_NAME: distilgpt2
+      USE_REAL_MODELS: "1"
+      OBFUSCATION_STRATEGY: random
+      OBFUSCATION_PARAM: "100"
+    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
+    deploy: {resources: {limits: {memory: 4G}}}
+
+  victim-distilgpt2-bucket500:
+    build: ../victim_service
+    ports: ["8111:8000"]
+    environment:
+      MODEL_NAME: distilgpt2
+      USE_REAL_MODELS: "1"
+      OBFUSCATION_STRATEGY: bucket
+      OBFUSCATION_PARAM: "500"
+    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
+    deploy: {resources: {limits: {memory: 4G}}}
+
+  victim-distilgpt2-constant1000:
+    build: ../victim_service
+    ports: ["8112:8000"]
+    environment:
+      MODEL_NAME: distilgpt2
+      USE_REAL_MODELS: "1"
+      OBFUSCATION_STRATEGY: constant
+      OBFUSCATION_PARAM: "1000"
+    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
+    deploy: {resources: {limits: {memory: 4G}}}
+
+  # ===========================================================================
+  # Attacker Services
+  # ===========================================================================
+  
+  attacker-calibrate:
+    build: ../attacker
+    environment:
+      ITERATIONS: "10000"
+      THRESHOLD: "0"
+      MODE: "2"
+    privileged: true
+    pid: host
+
+  attacker-csv:
+    build: ../attacker
+    environment:
+      ITERATIONS: "100000"
+      THRESHOLD: "0"
+      MODE: "0"
+      OUTPUT_FILE: results.csv
+    volumes: [attacker-output:/app/output]
+    privileged: true
+    pid: host
+
+  attacker-stats:
+    build: ../attacker
+    environment:
+      ITERATIONS: "100000"
+      THRESHOLD: "0"
+      MODE: "1"
+    privileged: true
+    pid: host
+
+  attacker-realtime:
+    build: ../attacker
+    environment:
+      ITERATIONS: "50000"
+      THRESHOLD: "150"
+      MODE: "3"
+    privileged: true
+    pid: host
+
+volumes:
+  victim-logs:
+  attacker-output:
+  hf-cache:
+
+networks:
+  default:
+    driver: bridge
