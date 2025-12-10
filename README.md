@@ -17,23 +17,28 @@ A comprehensive framework for investigating microarchitectural side-channel atta
 llm_sidechannel_final/
 ├── victim_service/          # Target LLM service
 │   ├── server.py           # FastAPI with obfuscation support
+│   ├── pp_server.py        # Prompt and probe victim server
 │   ├── model_backend.py    # Models + TimingObfuscator
+│   ├── hf_model_backend.py # HuggingFace model backend
 │   ├── covert_channel.py   # Covert channel implementation
 │   └── Dockerfile
 ├── attacker/                # Attack implementations
 │   ├── flush_reload.c      # Complete FLUSH+RELOAD with all modes
+│   ├── gpu_fingerprint.py  # GPU fingerprinting via prompt and probe
 │   ├── Makefile            # Release/debug/profile builds
 │   └── Dockerfile
 ├── experiments/             # Experiment automation
 │   ├── traffic_gen.py      # Traffic generator
 │   ├── analyze_stats.py    # Statistical analysis
-│   └── run_experiment.py   # Full experiment orchestration
+│   ├── run_experiment.py   # Full experiment orchestration
+│   └── prompt_and_probe.py # Prompt and probe orchestrator
 ├── infra/                   # Infrastructure
 │   ├── docker-compose.yml  # All service variants
 │   ├── docker-compose.gvisor.yml
 │   └── setup_gvisor.sh
 ├── mitigations/             # Mitigation evaluation
 │   └── evaluate_mitigation.py
+├── prompt_and_probe_plots.ipynb  # Jupyter notebook for visualizing results
 └── README.md
 ```
 
@@ -150,4 +155,42 @@ Examples:
 | distilgpt2 | 564.5ms | 210.8ms | yes |
 | opt-125m | 1003.4ms | 16.9ms | yes |
 | gpt2-medium | 2652.7ms | 55.5ms | yes |
+```
+
+
+## Prompt and Probe
+
+The prompt and probe attack uses GPU memory fingerprinting to identify which model is being used by a multi-tenant LLM service. This attack monitors GPU VRAM usage patterns while sending prompts of varying lengths to the victim service.
+
+### How to Run
+
+1. **Set up the environment**: Ensure you have the required dependencies installed, including `transformers`, `torch`, and `cuda13.0` for GPU monitoring, and that you are running on a GPU.
+
+2. **Start the prompt and probe experiment**:
+   ```bash
+   python3 -m experiments.prompt_and_probe
+   ```
+
+3. **Under the hood**:
+   - The orchestrator starts a victim server for each model/quantization combination
+   - For each configuration, it sends prompts of varying lengths (defined in `PROMPT_LENGTHS`)
+   - GPU VRAM usage is monitored during inference using NVIDIA's NVML library
+   - Results are saved to CSV files in the `fingerprints/` directory
+   - Each file is named: `{model_name}[{quant_mode}][seed={seed}].csv`
+
+4. **Visualize the results**:
+   The notebook ([prompt_and_probe_plots.ipynb](prompt_and_probe_plots.ipynb)) loads the CSV files from `fingerprints/` and generates plots showing:
+   - VRAM usage vs. prompt length for different models
+   - Distinguishability between models based on memory signatures
+   - Statistical analysis of fingerprinting accuracy
+
+   These visualizations match the plots shown in the report, demonstrating that different models have distinct VRAM usage patterns that can be used for fingerprinting.
+
+### Key Files
+
+- [experiments/prompt_and_probe.py](experiments/prompt_and_probe.py): Orchestrator that runs experiments across multiple models
+- [attacker/gpu_fingerprint.py](attacker/gpu_fingerprint.py): Core fingerprinting logic with VRAM monitoring
+- [victim_service/pp_server.py](victim_service/pp_server.py): Victim server for prompt and probe experiments
+- [victim_service/hf_model_backend.py](victim_service/hf_model_backend.py): HuggingFace model loading and inference
+- [prompt_and_probe_plots.ipynb](prompt_and_probe_plots.ipynb): Visualization and analysis notebook
 
