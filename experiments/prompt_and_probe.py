@@ -12,8 +12,8 @@ VICTIM_URL = f"http://127.0.0.1:{VICTIM_PORT}/generate"
 N_REPEATS = 10
 SEEDS = list(range(N_REPEATS))
 
-os.environ["HF_TOKEN"] = "***REMOVED***"
-
+os.environ["HF_TOKEN"] = "your_token_here"
+# ***REMOVED***
 HF_MODELS = { # mapping from models to quantization
     # # meta
     # "meta-llama/Llama-3.1-8B": ["q-8bit"],
