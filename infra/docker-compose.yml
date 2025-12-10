@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Docker Compose for LLM Side-Channel Research
 # 
 # Usage:
@@ -192,3 +193,24 @@ volumes:
 networks:
   default:
     driver: bridge
+=======
+version: "3.8"
+
+services:
+  victim:
+    build:
+      context: ../victim_service
+    image: llm-victim
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_NAME: "fake"
+      COVERT_ENABLED: "1"
+
+  attacker_flushreload:
+    build:
+      context: ../attacker
+    image: llm-attacker-flushreload
+    # No ports needed; it just logs to stdout
+    # Later you can add volumes or env vars if needed.
+>>>>>>> 8213a2da0756912468d3a900e918f4e3f949446b

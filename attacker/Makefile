@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # FLUSH+RELOAD Attacker Makefile
 
 CC = gcc
@@ -77,3 +78,17 @@ help:
 	@echo "  1 = Statistics only"
 	@echo "  2 = Calibration (find threshold)"
 	@echo "  3 = Realtime monitoring"
+=======
+# attacker/Makefile
+
+CC = gcc
+CFLAGS = -O2 -Wall -march=native
+
+all: flush_reload
+
+flush_reload: flush_reload.c
+	$(CC) $(CFLAGS) $< -o $@
+
+clean:
+	rm -f flush_reload
+>>>>>>> 8213a2da0756912468d3a900e918f4e3f949446b
