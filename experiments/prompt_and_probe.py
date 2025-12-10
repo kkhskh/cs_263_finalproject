@@ -12,21 +12,20 @@ VICTIM_URL = f"http://127.0.0.1:{VICTIM_PORT}/generate"
 N_REPEATS = 10
 SEEDS = list(range(N_REPEATS))
 
-os.environ["HF_TOKEN"] = "your_token_here"
 
 HF_MODELS = { # mapping from models to quantization
-    # # meta
-    # "meta-llama/Llama-3.1-8B": ["q-8bit"],
-    # "meta-llama/Llama-3.2-1B": ["fp16", "q-8bit"],
-    # "meta-llama/Llama-3.2-3B": ["fp16", "q-8bit"],
+    # meta
+    "meta-llama/Llama-3.1-8B": ["q-8bit"],
+    "meta-llama/Llama-3.2-1B": ["fp16", "q-8bit"],
+    "meta-llama/Llama-3.2-3B": ["fp16", "q-8bit"],
     # google
-    # "google/gemma-2b": ["fp16", "q-8bit"],
+    "google/gemma-2b": ["fp16", "q-8bit"],
     "google/gemma-7b": ["q-8bit"],
     # mistral
-    # "mistralai/Mistral-7B-v0.1": ["q-8bit"],
-    # "mistralai/Mistral-7B-Instruct-v0.2": ["q-8bit"],
-    # # # alibaba
-    # "Qwen/Qwen2-7B-Instruct": ["q-8bit"],
+    "mistralai/Mistral-7B-v0.1": ["q-8bit"],
+    "mistralai/Mistral-7B-Instruct-v0.2": ["q-8bit"],
+    # alibaba
+    "Qwen/Qwen2-7B-Instruct": ["q-8bit"],
 }
 
 MODELS = HF_MODELS
