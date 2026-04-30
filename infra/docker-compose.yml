@@ -1,216 +1,82 @@
-<<<<<<< HEAD
-# Docker Compose for LLM Side-Channel Research
-# 
-# Usage:
-#   docker compose up victim-fake-a -d
-#   docker compose up victim-distilgpt2-obfuscated -d
-#   docker compose run attacker-calibrate
+# Docker Compose for Prompt & Probe GPU experiment
 #
-# For gVisor (requires gVisor installed):
-#   docker compose -f docker-compose.yml -f docker-compose.gvisor.yml up victim-fake-a-gvisor
-
-version: "3.8"
-
-services:
-  # ===========================================================================
-  # Victim Services - No Obfuscation (Baseline)
-  # ===========================================================================
-  
-  victim-fake-a:
-    build: ../victim_service
-    ports: ["8000:8000"]
-    environment:
-      MODEL_NAME: fake_a
-      USE_REAL_MODELS: "0"
-      COVERT_ENABLED: "1"
-      OBFUSCATION_STRATEGY: none
-    volumes: [victim-logs:/app/logs]
-
-  victim-fake-b:
-    build: ../victim_service
-    ports: ["8001:8000"]
-    environment:
-      MODEL_NAME: fake_b
-      USE_REAL_MODELS: "0"
-      COVERT_ENABLED: "1"
-      OBFUSCATION_STRATEGY: none
-    volumes: [victim-logs:/app/logs]
-
-  victim-fake-c:
-    build: ../victim_service
-    ports: ["8002:8000"]
-    environment:
-      MODEL_NAME: fake_c
-      USE_REAL_MODELS: "0"
-      OBFUSCATION_STRATEGY: none
-    volumes: [victim-logs:/app/logs]
-
-  victim-distilgpt2:
-    build: ../victim_service
-    ports: ["8010:8000"]
-    environment:
-      MODEL_NAME: distilgpt2
-      USE_REAL_MODELS: "1"
-      COVERT_ENABLED: "1"
-      OBFUSCATION_STRATEGY: none
-    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
-    deploy: {resources: {limits: {memory: 4G}}}
-
-  victim-gpt2:
-    build: ../victim_service
-    ports: ["8011:8000"]
-    environment:
-      MODEL_NAME: gpt2
-      USE_REAL_MODELS: "1"
-      OBFUSCATION_STRATEGY: none
-    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
-    deploy: {resources: {limits: {memory: 4G}}}
-
-  victim-opt-125m:
-    build: ../victim_service
-    ports: ["8012:8000"]
-    environment:
-      MODEL_NAME: opt-125m
-      USE_REAL_MODELS: "1"
-      OBFUSCATION_STRATEGY: none
-    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
-    deploy: {resources: {limits: {memory: 4G}}}
-
-  victim-gpt2-medium:
-    build: ../victim_service
-    ports: ["8013:8000"]
-    environment:
-      MODEL_NAME: gpt2-medium
-      USE_REAL_MODELS: "1"
-      OBFUSCATION_STRATEGY: none
-    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
-    deploy: {resources: {limits: {memory: 6G}}}
-
-  # ===========================================================================
-  # Victim Services - With Timing Obfuscation (Mitigations)
-  # ===========================================================================
-  
-  victim-fake-a-random50:
-    build: ../victim_service
-    ports: ["8100:8000"]
-    environment:
-      MODEL_NAME: fake_a
-      USE_REAL_MODELS: "0"
-      OBFUSCATION_STRATEGY: random
-      OBFUSCATION_PARAM: "50"
-    volumes: [victim-logs:/app/logs]
-
-  victim-fake-a-bucket100:
-    build: ../victim_service
-    ports: ["8101:8000"]
-    environment:
-      MODEL_NAME: fake_a
-      USE_REAL_MODELS: "0"
-      OBFUSCATION_STRATEGY: bucket
-      OBFUSCATION_PARAM: "100"
-    volumes: [victim-logs:/app/logs]
-
-  victim-distilgpt2-random100:
-    build: ../victim_service
-    ports: ["8110:8000"]
-    environment:
-      MODEL_NAME: distilgpt2
-      USE_REAL_MODELS: "1"
-      OBFUSCATION_STRATEGY: random
-      OBFUSCATION_PARAM: "100"
-    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
-    deploy: {resources: {limits: {memory: 4G}}}
-
-  victim-distilgpt2-bucket500:
-    build: ../victim_service
-    ports: ["8111:8000"]
-    environment:
-      MODEL_NAME: distilgpt2
-      USE_REAL_MODELS: "1"
-      OBFUSCATION_STRATEGY: bucket
-      OBFUSCATION_PARAM: "500"
-    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
-    deploy: {resources: {limits: {memory: 4G}}}
-
-  victim-distilgpt2-constant1000:
-    build: ../victim_service
-    ports: ["8112:8000"]
-    environment:
-      MODEL_NAME: distilgpt2
-      USE_REAL_MODELS: "1"
-      OBFUSCATION_STRATEGY: constant
-      OBFUSCATION_PARAM: "1000"
-    volumes: [victim-logs:/app/logs, hf-cache:/root/.cache/huggingface]
-    deploy: {resources: {limits: {memory: 4G}}}
-
-  # ===========================================================================
-  # Attacker Services
-  # ===========================================================================
-  
-  attacker-calibrate:
-    build: ../attacker
-    environment:
-      ITERATIONS: "10000"
-      THRESHOLD: "0"
-      MODE: "2"
-    privileged: true
-    pid: host
-
-  attacker-csv:
-    build: ../attacker
-    environment:
-      ITERATIONS: "100000"
-      THRESHOLD: "0"
-      MODE: "0"
-      OUTPUT_FILE: results.csv
-    volumes: [attacker-output:/app/output]
-    privileged: true
-    pid: host
-
-  attacker-stats:
-    build: ../attacker
-    environment:
-      ITERATIONS: "100000"
-      THRESHOLD: "0"
-      MODE: "1"
-    privileged: true
-    pid: host
-
-  attacker-realtime:
-    build: ../attacker
-    environment:
-      ITERATIONS: "50000"
-      THRESHOLD: "150"
-      MODE: "3"
-    privileged: true
-    pid: host
-
-volumes:
-  victim-logs:
-  attacker-output:
-  hf-cache:
-
-networks:
-  default:
-    driver: bridge
-=======
-version: "3.8"
+# Drives the orchestrator from experiments/prompt_and_probe.py. Victim and
+# attacker each get their own container, share the GPU via NVIDIA Container
+# Toolkit, and communicate over the pp-net bridge (attacker hits victim
+# at http://victim:8000).
+#
+# Variables (set by orchestrator):
+#   MODEL_NAME, QUANT_MODE, SEED, HF_TOKEN
+#
+# The host pytorch venv is bind-mounted read-only so containers don't need
+# to install ~5GB of torch/transformers/bitsandbytes.
 
 services:
   victim:
+    image: pp-victim:latest
     build:
       context: ../victim_service
-    image: llm-victim
-    ports:
-      - "8000:8000"
+    container_name: pp-victim
     environment:
-      MODEL_NAME: "fake"
-      COVERT_ENABLED: "1"
+      MODEL_NAME: ${MODEL_NAME:-meta-llama/Llama-3.2-1B}
+      QUANT_MODE: ${QUANT_MODE:-fp16}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /root/.cache/huggingface
+    volumes:
+      - /opt/dlami/nvme/pytorch:/opt/pytorch:ro
+      - hf-cache:/root/.cache/huggingface
+    expose:
+      - "8000"
+    networks:
+      - pp-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
-  attacker_flushreload:
+  attacker:
+    image: pp-attacker:latest
     build:
       context: ../attacker
-    image: llm-attacker-flushreload
-    # No ports needed; it just logs to stdout
-    # Later you can add volumes or env vars if needed.
->>>>>>> 8213a2da0756912468d3a900e918f4e3f949446b
+      dockerfile: Dockerfile.gpu
+    container_name: pp-attacker
+    environment:
+      VICTIM_URL: http://victim:8000/generate
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /root/.cache/huggingface
+      CUMULATIVE_LENGTHS: ${CUMULATIVE_LENGTHS:-}
+      ATTACKER_APPEND: ${ATTACKER_APPEND:-}
+    volumes:
+      - /opt/dlami/nvme/pytorch:/opt/pytorch:ro
+      - ../results:/output
+      - hf-cache:/root/.cache/huggingface
+    networks:
+      - pp-net
+    depends_on:
+      - victim
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command:
+      - "--model"
+      - "${MODEL_NAME:-meta-llama/Llama-3.2-1B}"
+      - "--quant"
+      - "${QUANT_MODE:-fp16}"
+      - "--seed"
+      - "${SEED:-0}"
+
+networks:
+  pp-net:
+    driver: bridge
+
+volumes:
+  hf-cache:

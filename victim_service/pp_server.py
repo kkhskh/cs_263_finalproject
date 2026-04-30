@@ -3,6 +3,7 @@
 import csv
 import os
 import time
+import torch
 from pathlib import Path
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -57,6 +58,12 @@ def _append_request_log(
                 int(covert_triggered),
             ]
         )
+
+
+@app.post("/reset_cache")
+def reset_cache():
+    torch.cuda.empty_cache()
+    return {"status": "ok"}
 
 
 @app.post("/generate", response_model=GenerateResponse)

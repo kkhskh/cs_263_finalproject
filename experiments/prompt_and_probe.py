@@ -1,118 +1,131 @@
+"""Container-based orchestrator for the GPU Prompt & Probe attack.
+
+Spins up victim and attacker as **separate Docker containers** via
+infra/docker-compose.yml, one (model, quant, seed) configuration at a time.
+The attacker writes its fingerprint CSV into ../results/fingerprints/ via a
+bind mount.
+"""
+import argparse
 import os
 import subprocess
-import time
-import signal
-import requests
 import sys
+import time
 
-from attacker.gpu_fingerprint import make_prompt, prompt_and_probe, PROMPT_LENGTHS
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+COMPOSE_FILE = os.path.join(REPO_ROOT, "infra", "docker-compose.yml")
 
-VICTIM_PORT = 8000
-VICTIM_URL = f"http://127.0.0.1:{VICTIM_PORT}/generate"
-N_REPEATS = 10
-SEEDS = list(range(N_REPEATS))
+# Default minimal model set — small fp16 models for quick re-runs.
+DEFAULT_MODELS = {
+    "meta-llama/Llama-3.2-1B": ["fp16"],
+    "meta-llama/Llama-3.2-3B": ["fp16"],
+}
 
-
-HF_MODELS = { # mapping from models to quantization
-    # meta
+# Full set kept here for reference (matches the paper).
+HF_MODELS_FULL = {
     "meta-llama/Llama-3.1-8B": ["q-8bit"],
     "meta-llama/Llama-3.2-1B": ["fp16", "q-8bit"],
     "meta-llama/Llama-3.2-3B": ["fp16", "q-8bit"],
-    # google
     "google/gemma-2b": ["fp16", "q-8bit"],
     "google/gemma-7b": ["q-8bit"],
-    # mistral
     "mistralai/Mistral-7B-v0.1": ["q-8bit"],
     "mistralai/Mistral-7B-Instruct-v0.2": ["q-8bit"],
-    # alibaba
     "Qwen/Qwen2-7B-Instruct": ["q-8bit"],
 }
 
-MODELS = HF_MODELS
 
-def wait_for_server_ready(timeout=600):
-    """
-    Poll the /generate endpoint until the server responds.
-    This avoids relying on log output ordering.
-    """
-    print("[orchestrator] Waiting for server to become ready...")
-    start = time.time()
-
-    while True:
-        if time.time() - start > timeout:
-            raise RuntimeError("Server failed to start within timeout")
-
-        try:
-            r = requests.post(VICTIM_URL, json={"prompt": "warmup"})
-            if r.status_code == 200:
-                print("[orchestrator] Server is ready.")
-                return
-        except Exception:
-            pass
-
-        time.sleep(5)
-
-
-def start_server(model_name: str, quant_mode: str) -> subprocess.Popen:
-    """
-    Start the victim server with MODEL_NAME and QUANT_MODE set.
-    """
-    env = os.environ.copy()
-    env["MODEL_NAME"] = model_name
-    env["QUANT_MODE"] = quant_mode
-
-    print(f"\n=== Starting server for model: {model_name} ===")
-    print(f"[orchestrator] Using victim_service directory: victim_service")
-
-    proc = subprocess.Popen(
-        [
-            "uvicorn",
-            "server:app",
-            "--host", "0.0.0.0",
-            "--port", str(VICTIM_PORT),
-        ],
-        cwd="victim_service",
-        env=env,
-        preexec_fn=os.setsid,   # mayeb delete this
+def compose(*args, env=None, check=True, capture=False):
+    cmd = ["docker", "compose", "-f", COMPOSE_FILE, *args]
+    print(f"[orch] $ {' '.join(cmd)}", flush=True)
+    return subprocess.run(
+        cmd,
+        env={**os.environ, **(env or {})},
+        check=check,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=capture,
     )
-    return proc
 
 
-def stop_server(proc):
-    """Kill the victim server."""
-    print("Stopping server...")
+def build_images():
+    compose("build")
+
+
+def teardown():
+    # Keep named volumes (HF cache) across runs — only remove containers.
+    compose("down", "--remove-orphans", check=False)
+
+
+def hf_token() -> str:
+    tok = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+    if tok:
+        return tok
+    path = os.path.expanduser("~/.cache/huggingface/token")
+    if os.path.exists(path):
+        with open(path) as f:
+            return f.read().strip()
+    return ""
+
+
+def run_one(model: str, quant: str, seed: int, token: str,
+            cumulative_lengths: str = "", append: bool = False):
+    safe = model.split("/")[-1]
+    out_csv = os.path.join(REPO_ROOT, "results", "fingerprints",
+                           f"{safe}[{quant}][seed={seed}].csv")
+    print(f"\n=== {model} [{quant}] seed={seed} ===", flush=True)
+
+    env = {
+        "MODEL_NAME": model,
+        "QUANT_MODE": quant,
+        "SEED": str(seed),
+        "HF_TOKEN": token,
+        "CUMULATIVE_LENGTHS": cumulative_lengths,
+        "ATTACKER_APPEND": "1" if append else "",
+    }
+
+    # Fresh state each run — prevents cross-config GPU memory carryover.
+    teardown()
+
+    compose("up", "-d", "victim", env=env)
     try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+        # Run attacker (foreground) and stream logs
+        compose("run", "--rm", "--no-deps", "attacker", env=env)
+        if not os.path.exists(out_csv):
+            print(f"[orch] WARNING: expected output {out_csv} not found", file=sys.stderr)
+    finally:
+        teardown()
 
-def run_attack_for_model(model_name: str, quant_mode: str, seed: int=42):
-    """Run fingerprinting on a given model."""
-    safe_name = model_name.split("/")[-1] # replace so not interpreted as path
-    out_csv = f"fingerprints/{safe_name}[{quant_mode}][seed={seed}].csv"
-    print(f"Writing fingerprint data to {out_csv}")
-
-    os.makedirs("fingerprints", exist_ok=True)
-
-    with open(out_csv, "w") as f:
-        f.write("prompt_length,peak_vram_mb\n")
-
-        for L in PROMPT_LENGTHS:
-            prompt = make_prompt(L, model_name, seed=seed)
-            peak = prompt_and_probe(prompt, L, out_dir=f"timeseries_{safe_name}[{quant_mode}][seed={seed}]")
-            f.write(f"{L},{peak:.2f}\n")
-            time.sleep(1)
 
 def main():
-    for model_name, quant_modes in MODELS.items():
-        for quant_mode in quant_modes:
-            for seed in SEEDS:
-                proc = start_server(model_name, quant_mode)
-                wait_for_server_ready()
-                run_attack_for_model(model_name, quant_mode, seed=seed)
-                stop_server(proc)
+    parser = argparse.ArgumentParser(description="Containerized Prompt & Probe orchestrator")
+    parser.add_argument("--seeds", type=int, default=1,
+                        help="Number of seeds per model (default: 1 for quick re-run)")
+    parser.add_argument("--full", action="store_true",
+                        help="Use the full model matrix from the paper instead of the minimal set")
+    parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--cumulative-lengths", default="",
+                        help="comma-separated cumulative lengths to run (overrides default sweep)")
+    parser.add_argument("--append", action="store_true",
+                        help="append to existing CSV instead of overwriting")
+    args = parser.parse_args()
 
-    print("\n=== All models tested! ===")
+    models = HF_MODELS_FULL if args.full else DEFAULT_MODELS
+    seeds = list(range(args.seeds))
+    token = hf_token()
+    if not token:
+        print("[orch] WARNING: no HF token found; gated models will fail", file=sys.stderr)
+
+    if not args.skip_build:
+        build_images()
+
+    for model, quants in models.items():
+        for quant in quants:
+            for seed in seeds:
+                run_one(model, quant, seed, token,
+                        cumulative_lengths=args.cumulative_lengths,
+                        append=args.append)
+
+    print("\n=== All configurations complete ===")
+
 
 if __name__ == "__main__":
     main()

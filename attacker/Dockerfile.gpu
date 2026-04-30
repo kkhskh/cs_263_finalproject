@@ -10,9 +10,6 @@ ENV PYTHONUNBUFFERED=1 \
     PATH=/opt/pytorch/bin:$PATH \
     HF_HOME=/root/.cache/huggingface
 
-COPY pp_server.py model_backend.py hf_model_backend.py covert_channel.py server.py ./
-RUN mkdir -p /app/logs
+COPY gpu_fingerprint.py run_attack.py ./
 
-EXPOSE 8000
-
-CMD ["python", "-m", "uvicorn", "pp_server:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["python", "run_attack.py"]

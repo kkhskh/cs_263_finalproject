@@ -14,8 +14,9 @@ MODEL_NAME = os.getenv("MODEL_NAME", "gpt2")
 OUT_CSV = f"{MODEL_NAME}_fingerprint.csv"
 
 
-# different prompt lengths to test
-PROMPT_LENGTHS = [2, 1000, 2000, 3000, 4000]
+# marginal prompt lengths per step (VRAM accumulates across steps).
+# Cumulative lengths are [2, 1000, 2000, 3000] tokens — matches the paper.
+MARGINAL_PROMPT_LENGTHS = [2, 998, 1000, 1000]
 
 
 def make_prompt(length: int, model_name: str, seed: int=42) -> str:
@@ -104,7 +105,7 @@ def main():
         writer = csv.writer(f)
         writer.writerow(["prompt_length", "peak_vram_mb"])
 
-        for L in PROMPT_LENGTHS:
+        for L in MARGINAL_PROMPT_LENGTHS:
             print(f"\n=== Prompt length {L} ===")
             prompt = make_prompt(L, "gpt2")
             peak = prompt_and_probe(prompt, L)
